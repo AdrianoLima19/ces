@@ -18,9 +18,7 @@ class ArrayBag
      *
      * @param  array $parameters
      */
-    public function __construct(protected array $parameters = [])
-    {
-    }
+    public function __construct(protected array $parameters = []) {}
 
     /**
      * Get all parameters
@@ -149,11 +147,13 @@ class ArrayBag
     /**
      * Enables property overloading.
      *
+     * @param  bool $value
+     *
      * @return void
      */
-    public static function enablePropertyOverloading(): void
+    public static function enablePropertyOverloading(bool $value): void
     {
-        static::$isPropertyOverloadEnabled = true;
+        static::$isPropertyOverloadEnabled = $value;
     }
 
     /**
@@ -172,8 +172,11 @@ class ArrayBag
             $this->set($name, $value);
         } else {
             throw new \BadMethodCallException(
-                'Unable to set property because overloading is currently disabled. To enable property overloading, use %s::enablePropertyOverloading().',
-                1
+                sprintf(
+                    'Unable to set property "%s" because overloading is currently disabled. To enable property overloading, use %s::enablePropertyOverloading().',
+                    $name,
+                    __CLASS__
+                )
             );
         }
     }
@@ -193,8 +196,11 @@ class ArrayBag
             return $this->get($name);
         } else {
             throw new \BadMethodCallException(
-                'Unable to get property because overloading is currently disabled. To enable property overloading, use %s::enablePropertyOverloading().',
-                1
+                sprintf(
+                    'Unable to get property "%s" because overloading is currently disabled. To enable property overloading, use %s::enablePropertyOverloading().',
+                    $name,
+                    __CLASS__
+                )
             );
         }
     }
