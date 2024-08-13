@@ -4,16 +4,25 @@ declare(strict_types=1);
 
 namespace Note;
 
-use Exception;
-
 class Container
 {
-    protected $bindings;
-    protected $resolved;
-    protected $instances;
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $entries = [];
 
     /**
-     * Check if the container has a binding for the given ID
+     * @var array<string, mixed>
+     */
+    protected array $binds = [];
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected array $instances = [];
+
+    /**
+     * Checks if the identifier is registered in the container.
      *
      * @param  string $id
      *
@@ -21,77 +30,100 @@ class Container
      */
     public function has(string $id): bool
     {
-        return isset($this->bindings[$id]);
+        return isset($this->binds[$id]);
     }
 
     /**
-     * Retrieve an entry from the container by its ID
+     * Registers an entry in the container.
+     *
+     * @param  string $id
+     * @param  mixed  $entry
+     * @param  bool   $singleton
+     *
+     * @return void
+     */
+    public function set(string $id, mixed $entry = null, bool $singleton = false): void
+    {
+        $this->unset($id);
+
+        if (is_null($entry)) {
+            $entry = $id;
+        }
+
+        $this->binds[$id] = compact('entry', 'singleton');
+    }
+
+    /**
+     * Retrieves an entry from the container.
      *
      * @param  string $id
      * @param  array  $parameters
      *
      * @return mixed
      *
-     * @throws Exception If the ID is not found or if the entry is not valid
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     * @throws \LogicException
      */
     public function get(string $id, array $parameters = []): mixed
     {
-        if (isset($this->resolved[$id]) && $this->resolved[$id]) {
+        if (!$this->has($id)) {
+            throw new \InvalidArgumentException("Entry '{$id}' is not bound in the container.");
+        }
+
+        $singleton = $this->binds[$id]['singleton'];
+
+        if ($singleton && isset($this->instances[$id])) {
             return $this->instances[$id];
         }
 
-        if (!$this->has($id)) {
-            throw new Exception("No binding found for ID: {$id}", 1);
-        }
-
-        $bind = $this->bindings[$id]['entry'];
-        $shared = $this->bindings[$id]['shared'];
+        $bind = $this->binds[$id]['entry'];
 
         if ($bind instanceof \Closure) {
-            $entry = call_user_func($bind, ...$parameters);
+            try {
+                $entry = call_user_func($bind, ...$parameters);
+            } catch (\Throwable $th) {
+                throw new \RuntimeException("Error invoking the closure for '{$id}'.", 0, $th);
+            }
 
-            if ($shared) {
-                $this->resolved[$id] = true;
+            if ($singleton) {
                 $this->instances[$id] = $entry;
             }
 
             return $entry;
         }
 
-        if (!is_string($bind) || (is_string($bind) && !class_exists($bind))) {
-            if ($shared) {
-                $this->resolved[$id] = true;
+        if (!is_string($bind) || !class_exists($bind)) {
+            if ($singleton) {
                 $this->instances[$id] = $bind;
             }
 
             return $bind;
         }
 
-        // todo: Implementation pending for ReflectionClass
+        $reflection = new \ReflectionClass($bind);
 
-        throw new Exception("Invalid binding for ID: {$id}", 1);
+        if (!$reflection->isInstantiable()) {
+            throw new \LogicException("Class '{$bind}' is not instantiable.");
+        }
+
+        try {
+            $entry = is_null($reflection->getConstructor())
+                ? new $bind()
+                : $reflection->newInstanceArgs($parameters);
+        } catch (\Throwable $th) {
+            throw new \RuntimeException("Error instantiating class '{$bind}'.", 0, $th);
+        }
+
+        if ($singleton) {
+            $this->instances[$id] = $entry;
+        }
+
+        return $entry;
     }
 
     /**
-     * Set a binding in the container
-     *
-     * @param  string $id
-     * @param  mixed  $entry
-     * @param  bool   $shared
-     *
-     * @return void
-     */
-    public function set(string $id, mixed $entry = null, bool $shared = false): void
-    {
-        $this->unset($id);
-
-        if (is_null($entry)) $entry = $id;
-
-        $this->bindings[$id] = compact('entry', 'shared');
-    }
-
-    /**
-     * Remove a binding from the container
+     * Removes an entry from the container.
      *
      * @param  string $id
      *
@@ -100,9 +132,39 @@ class Container
     public function unset(string $id): void
     {
         unset(
-            $this->bindings[$id],
-            $this->resolved[$id],
+            $this->binds[$id],
             $this->instances[$id]
         );
+    }
+
+    /**
+     * Accesses an entry directly.
+     *
+     * @param  string $key
+     *
+     * @return mixed
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function __get(string $key): mixed
+    {
+        if (!isset($this->entries[$key])) {
+            throw new \InvalidArgumentException("Entry '{$key}' does not exist in the container.");
+        }
+
+        return $this->entries[$key];
+    }
+
+    /**
+     * Sets an entry directly.
+     *
+     * @param  string $key
+     * @param  mixed  $value
+     *
+     * @return void
+     */
+    public function __set(string $key, mixed $value): void
+    {
+        $this->entries[$key] = $value;
     }
 }
